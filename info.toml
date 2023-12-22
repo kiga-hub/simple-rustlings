@@ -1,0 +1,13 @@
+# INTRO
+
+[[exercises]]
+name = "intro"
+path = "exercises/intro/intro.rs"
+mode = "compile"
+hint = """use kiga run intro."""
+
+[[exercises]]
+name = "test"
+path = "exercises/test/test.rs"
+mode = "compile"
+hint = """use kiga run test."""

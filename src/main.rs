@@ -1,4 +1,4 @@
-// 导入本低项目中的 exercise 模块中的 Exercise 和 ExerciseList 类型，并使它们在当前作用域中可用
+// 导入本项目中的 exercise 模块中的 Exercise 和 ExerciseList 类型，并使它们在当前作用域中可用
 use crate::exercise::{Exercise, ExerciseList};
 use crate::project::RustAnalyzerProject;
 use crate::run::{reset, run};
@@ -118,12 +118,15 @@ enum Subcommands {
 }
 
 fn main() {
+    // 解析命令行参数
     let args = Args::parse();
 
+    // 如果没有提供子命令，则打印欢迎信息
     if args.command.is_none() {
         println!("\n{WELCOME}\n");
     }
 
+    // 如果当前目录下没有 info.toml 文件，则打印错误信息并退出程序
     if !Path::new("info.toml").exists() {
         println!(
             "{} must be run from the kiga directory",
@@ -133,6 +136,7 @@ fn main() {
         std::process::exit(1);
     }
 
+    // 如果当前目录下没有 exercises 目录，则打印错误信息并退出程序
     if !rustc_exists() {
         println!("We cannot find `rustc`.");
         println!("Try running `rustc --version` to diagnose your problem.");
@@ -140,16 +144,20 @@ fn main() {
         std::process::exit(1);
     }
 
+    // 从 info.toml 文件中读取练习列表
     let toml_str = &fs::read_to_string("info.toml").unwrap();
+    // 将练习列表解析为 ExerciseList 类型
     let exercises = toml::from_str::<ExerciseList>(toml_str).unwrap().exercises;
+    // 如果没有提供子命令，则打印练习列表并退出程序,verbose 为 true 表示打印练习列表
     let verbose = args.nocapture;
-
     let command = args.command.unwrap_or_else(|| {
         println!("{DEFAULT_OUT}\n");
         std::process::exit(0);
     });
 
+    // 根据提供的子命令执行相应的操作
     match command {
+        // 如果提供的子命令是 List，则打印练习列表
         Subcommands::List {
             paths,
             names,
@@ -157,28 +165,37 @@ fn main() {
             unsolved,
             solved,
         } => {
+            //
             if !paths && !names {
                 println!("{:<17}\t{:<46}\t{:<7}", "Name", "Path", "Status");
             }
+            // 统计已完成的练习数量
             let mut exercises_done: u16 = 0;
+            // 将 filter 转换为小写字母
             let filters = filter.clone().unwrap_or_default().to_lowercase();
+            // 遍历练习列表中的每一个练习
             exercises.iter().for_each(|e| {
+                // 将练习的路径转换为字符串
                 let fname = format!("{}", e.path.display());
+                // 如果练习的名称或路径中包含 filter 中的字符串，则将 filter_cond 设置为 true，否则设置为 false
                 let filter_cond = filters
                     .split(',')
                     .filter(|f| !f.trim().is_empty())
                     .any(|f| e.name.contains(f) || fname.contains(f));
+                // 如果练习已完成，则将 status 设置为 Done，否则设置为 Pending
                 let status = if e.looks_done() {
                     exercises_done += 1;
                     "Done"
                 } else {
                     "Pending"
                 };
+                // 如果练习已完成，则将 solved 设置为 true，否则设置为 false
                 let solve_cond = {
                     (e.looks_done() && solved)
                         || (!e.looks_done() && unsolved)
                         || (!solved && !unsolved)
                 };
+                // 如果练习已完成且 filter_cond 为 true，则打印练习的名称、路径和状态
                 if solve_cond && (filter_cond || filter.is_none()) {
                     let line = if paths {
                         format!("{fname}\n")
@@ -192,7 +209,9 @@ fn main() {
                     // So, we're handling a Broken Pipe error and exiting with 0 anyway
                     let stdout = std::io::stdout();
                     {
+                        // 临时获取 stdout 的锁
                         let mut handle = stdout.lock();
+                        // 将 line 写入 stdout
                         handle.write_all(line.as_bytes()).unwrap_or_else(|e| {
                             match e.kind() {
                                 std::io::ErrorKind::BrokenPipe => std::process::exit(0),
@@ -202,6 +221,7 @@ fn main() {
                     }
                 }
             });
+            // 打印练习完成的百分比
             let percentage_progress = exercises_done as f32 / exercises.len() as f32 * 100.0;
             println!(
                 "Progress: You completed {} / {} exercises ({:.1} %).",
@@ -212,29 +232,34 @@ fn main() {
             std::process::exit(0);
         }
 
+        // 如果提供的子命令是 Run，则运行指定的练习
         Subcommands::Run { name } => {
             let exercise = find_exercise(&name, &exercises);
 
             run(exercise, verbose).unwrap_or_else(|_| std::process::exit(1));
         }
 
+        // 如果提供的子命令是 Reset，则重置指定的练习
         Subcommands::Reset { name } => {
             let exercise = find_exercise(&name, &exercises);
 
             reset(exercise).unwrap_or_else(|_| std::process::exit(1));
         }
 
+        // 如果提供的子命令是 Hint，则打印指定练习的提示
         Subcommands::Hint { name } => {
             let exercise = find_exercise(&name, &exercises);
 
             println!("{}", exercise.hint);
         }
 
+        // 如果提供的子命令是 Verify，则验证所有练习
         Subcommands::Verify => {
             verify(&exercises, (0, exercises.len()), verbose, false)
                 .unwrap_or_else(|_| std::process::exit(1));
         }
 
+        // 如果提供的子命令是 Lsp，则生成 rust-project.json 文件
         Subcommands::Lsp => {
             let mut project = RustAnalyzerProject::new();
             project
@@ -254,6 +279,7 @@ fn main() {
             }
         }
 
+        // 如果提供的子命令是 Watch，则启动监视器
         Subcommands::Watch { success_hints } => match watch(&exercises, verbose, success_hints) {
             Err(e) => {
                 println!(
@@ -278,26 +304,40 @@ fn main() {
     }
 }
 
+// spawn_watch_shell 函数用于启动一个新的线程，用于监听用户输入的命令
 fn spawn_watch_shell(
+    // failed_exercise_hint 是一个 Arc<Mutex<Option<String>>> 类型的变量，用于存储当前练习的提示
     failed_exercise_hint: &Arc<Mutex<Option<String>>>,
+    // should_quit 是一个 Arc<AtomicBool> 类型的变量，用于表示是否退出程序
     should_quit: Arc<AtomicBool>,
 ) {
+    // 将 failed_exercise_hint 和 should_quit 移动到新线程中
     let failed_exercise_hint = Arc::clone(failed_exercise_hint);
     println!("Welcome to watch mode! You can type 'help' to get an overview of the commands you can use here.");
+    // 启动一个新的线程，用于监听用户输入的命令
     thread::spawn(move || loop {
+        // 创建一个新的字符串变量，用于存储用户输入的命令
         let mut input = String::new();
+        // 从标准输入中读取用户输入的命令
         match io::stdin().read_line(&mut input) {
+            // 如果读取成功，则执行相应的命令
             Ok(_) => {
+                // 去掉命令中的空白字符
                 let input = input.trim();
+                // 如果命令是 hint，则打印当前练习的提示
                 if input == "hint" {
                     if let Some(hint) = &*failed_exercise_hint.lock().unwrap() {
                         println!("{hint}");
                     }
+                    // 如果命令是 clear，则清空终端
                 } else if input == "clear" {
                     println!("\x1B[2J\x1B[1;1H");
+                    // 如果命令是 quit，则退出程序
                 } else if input.eq("quit") {
+                    // 将 should_quit 设置为 true
                     should_quit.store(true, Ordering::SeqCst);
                     println!("Bye!");
+                    // 如果命令是 help，则打印帮助信息
                 } else if input.eq("help") {
                     println!("Commands available to you in watch mode:");
                     println!("  hint   - prints the current exercise's hint");
@@ -308,10 +348,17 @@ fn spawn_watch_shell(
                     println!();
                     println!("Watch mode automatically re-evaluates the current exercise");
                     println!("when you edit a file's contents.")
+                    // 如果命令以 ! 开头，则执行相应的命令
                 } else if let Some(cmd) = input.strip_prefix('!') {
+                    // 将命令按空白字符分割为多个部分
                     let parts: Vec<&str> = cmd.split_whitespace().collect();
+                    // 如果命令为空，则打印错误信息
                     if parts.is_empty() {
                         println!("no command provided");
+                        // 否则，执行相应的命令
+                        // Command::new(parts[0]) 用于创建一个新的命令
+                        // args(&parts[1..]) 用于设置命令的参数
+                        // status() 用于执行命令并返回执行结果
                     } else if let Err(e) = Command::new(parts[0]).args(&parts[1..]).status() {
                         println!("failed to execute command `{}`: {}", cmd, e);
                     }
@@ -319,12 +366,15 @@ fn spawn_watch_shell(
                     println!("unknown command: {input}");
                 }
             }
+            // 如果读取失败，则打印错误信息
             Err(error) => println!("error reading command: {error}"),
         }
     });
 }
 
+// find_exercise 函数用于在练习列表中查找指定名称的练习
 fn find_exercise<'a>(name: &str, exercises: &'a [Exercise]) -> &'a Exercise {
+    // 如果提供的名称是 next，则查找第一个未完成的练习
     if name.eq("next") {
         exercises
             .iter()
@@ -345,15 +395,21 @@ fn find_exercise<'a>(name: &str, exercises: &'a [Exercise]) -> &'a Exercise {
     }
 }
 
+// WatchStatus 枚举类型用于表示监视器的状态
 enum WatchStatus {
     Finished,
     Unfinished,
 }
 
+// watch 函数用于启动一个监视器，用于监视文件系统事件
 fn watch(
+    // exercises 是一个 &[Exercise] 类型的变量，用于存储练习列表
     exercises: &[Exercise],
+    // verbose 是一个 bool 类型的变量，用于表示是否打印练习列表
     verbose: bool,
+    // success_hints 是一个 bool 类型的变量，用于表示是否在练习完成时打印提示
     success_hints: bool,
+    // watch 函数返回一个 Result<WatchStatus> 类型的结果
 ) -> notify::Result<WatchStatus> {
     /* Clears the terminal with an ANSI escape code.
     Works in UNIX and newer Windows terminals. */
@@ -361,16 +417,26 @@ fn watch(
         println!("\x1Bc");
     }
 
+    // 创建一个新的通道，用于在监视器和主线程之间传递消息
     let (tx, rx) = channel();
+    // 创建一个新的原子布尔值，用于表示是否退出程序
     let should_quit = Arc::new(AtomicBool::new(false));
 
+    // 创建一个新的监视器，用于监视文件系统事件
+    // tx 是一个 Sender<DebouncedEvent> 类型的变量，用于向监视器发送消息
+    // Duration::from_secs(1) 表示监视器每隔 1 秒检查一次文件系统事件
     let mut watcher: RecommendedWatcher = Watcher::new(tx, Duration::from_secs(1))?;
+    // 将当前目录下的所有文件和子目录添加到监视器中
     watcher.watch(Path::new("./exercises"), RecursiveMode::Recursive)?;
 
+    // 清空终端
     clear_screen();
 
+    // to_owned_hint 函数用于将 Exercise 类型的变量转换为 String 类型的变量
     let to_owned_hint = |t: &Exercise| t.hint.to_owned();
+    // failed_exercise_hint 是一个 Arc<Mutex<Option<String>>> 类型的变量，用于存储当前练习的提示
     let failed_exercise_hint = match verify(
+        // exercises.iter() 用于创建一个迭代器，用于遍历练习列表
         exercises.iter(),
         (0, exercises.len()),
         verbose,
@@ -379,15 +445,23 @@ fn watch(
         Ok(_) => return Ok(WatchStatus::Finished),
         Err(exercise) => Arc::new(Mutex::new(Some(to_owned_hint(exercise)))),
     };
+
+    // 启动一个新的线程，用于监听用户输入的命令
     spawn_watch_shell(&failed_exercise_hint, Arc::clone(&should_quit));
     loop {
+        // 接收来自监视器的消息
         match rx.recv_timeout(Duration::from_secs(1)) {
             Ok(event) => match event {
+                // 如果接收到的消息是 Create、Chmod 或 Write，则检查是否有练习完成
                 DebouncedEvent::Create(b) | DebouncedEvent::Chmod(b) | DebouncedEvent::Write(b) => {
+                    // 如果文件的扩展名是 rs，则检查是否有练习完成
                     if b.extension() == Some(OsStr::new("rs")) && b.exists() {
+                        // 将文件的路径转换为绝对路径
                         let filepath = b.as_path().canonicalize().unwrap();
+                        // 从练习列表中查找指定路径的练习
                         let pending_exercises = exercises
                             .iter()
+                            // 如果练习已完成，则将其从练习列表中移除
                             .find(|e| filepath.ends_with(&e.path))
                             .into_iter()
                             .chain(
@@ -395,6 +469,7 @@ fn watch(
                                     .iter()
                                     .filter(|e| !e.looks_done() && !filepath.ends_with(&e.path)),
                             );
+                            // 统计已完成的练习数量
                         let num_done = exercises.iter().filter(|e| e.looks_done()).count();
                         clear_screen();
                         match verify(
@@ -413,6 +488,7 @@ fn watch(
                 }
                 _ => {}
             },
+            // 如果接收到的消息是超时，则继续循环
             Err(RecvTimeoutError::Timeout) => {
                 // the timeout expired, just check the `should_quit` variable below then loop again
             }
@@ -425,7 +501,9 @@ fn watch(
     }
 }
 
+// rustc_exists 函数用于检查是否安装了 Rust 编译器
 fn rustc_exists() -> bool {
+    // Command::new("rustc") 用于创建一个新的命令
     Command::new("rustc")
         .args(["--version"])
         .stdout(Stdio::null())
@@ -437,41 +515,9 @@ fn rustc_exists() -> bool {
         .unwrap_or(false)
 }
 
-const DEFAULT_OUT: &str = r#"Thanks for installing kiga!
-
-Is this your first time? Don't worry, kiga was made for beginners! We are
-going to teach you a lot of things about Rust, but before we can get
-started, here's a couple of notes about how kiga operates:
-
-1. The central concept behind kiga is that you solve exercises. These
-   exercises usually have some sort of syntax error in them, which will cause
-   them to fail compilation or testing. Sometimes there's a logic error instead
-   of a syntax error. No matter what error, it's your job to find it and fix it!
-   You'll know when you fixed it because then, the exercise will compile and
-   kiga will be able to move on to the next exercise.
-2. If you run kiga in watch mode (which we recommend), it'll automatically
-   start with the first exercise. Don't get confused by an error message popping
-   up as soon as you run kiga! This is part of the exercise that you're
-   supposed to solve, so open the exercise file in an editor and start your
-   detective work!
-3. If you're stuck on an exercise, there is a helpful hint you can view by typing
-   'hint' (in watch mode), or running `kiga hint exercise_name`.
-4. If an exercise doesn't make sense to you, feel free to open an issue on GitHub!
-   (https://github.com/rust-lang/kiga/issues/new). We look at every issue,
-   and sometimes, other learners do too so you can help each other out!
-5. If you want to use `rust-analyzer` with exercises, which provides features like
-   autocompletion, run the command `kiga lsp`.
-
-Got all that? Great! To get started, run `kiga watch` in order to get the first
-exercise. Make sure to have your editor open!"#;
+const DEFAULT_OUT: &str = r#"Thanks for installing kiga!"#;
 
 const FENISH_LINE: &str = r"+----------------------------------------------------+
-|          You made it to the Fe-nish line!          |
-We hope you enjoyed learning about the various aspects of Rust!
-If you noticed any issues, please don't hesitate to report them to our repo.
-You can also contribute your own exercises to help the greater community!
-
-Before reporting an issue or contributing, please read our guidelines:
-https://github.com/rust-lang/kiga/blob/main/CONTRIBUTING.md";
+|          You made it to the Fe-nish line!          |";
 
 const WELCOME: &str = r"Welcome To KIGA! ";
